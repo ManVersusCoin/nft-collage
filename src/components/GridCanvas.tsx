@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } f
 import { NFT } from '../hooks/useWalletCollections';
 import {
     Trash2, Download, Grid3X3, Settings, Scissors, CropIcon,
-    Move, Undo, Redo, Copy, Magnet,
+    Move, Undo, Redo, Copy, Magnet,Edit,
     Plus, Minus, ArrowUp, ArrowDown, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
@@ -68,6 +68,7 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
     const [initialItemState, setInitialItemState] = useState<CanvasItem | null>(null);
 
     const [showToolbar, setShowToolbar] = useState(false);
+    const [toolbarOpen, setToolbarOpen] = useState(false);
 
     // Generate a unique ID
     const generateUniqueId = () => {
@@ -1034,6 +1035,95 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
         );
         saveToHistory([...items]);
     };
+    function renderDesktopToolbar() {
+        if (!toolbarOpen) {
+            // Show just the edit button
+            return (
+                <div className="hidden md:flex items-center my-2">
+                    <button
+                        className="flex items-center gap-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 font-semibold"
+                        onClick={() => setToolbarOpen(true)}
+                    >
+                        <Edit size={18} />
+                        Edit Selected
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div className="hidden md:flex items-center gap-2 my-2 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow">
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Move Up"
+                    onClick={() => moveActiveItem(0, -cellSize)}
+                    disabled={!activeItem}
+                >
+                    <ArrowUp size={20} />
+                </button>
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Move Left"
+                    onClick={() => moveActiveItem(-cellSize, 0)}
+                    disabled={!activeItem}
+                >
+                    <ArrowLeft size={20} />
+                </button>
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Move Right"
+                    onClick={() => moveActiveItem(cellSize, 0)}
+                    disabled={!activeItem}
+                >
+                    <ArrowRight size={20} />
+                </button>
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Move Down"
+                    onClick={() => moveActiveItem(0, cellSize)}
+                    disabled={!activeItem}
+                >
+                    <ArrowDown size={20} />
+                </button>
+                <span className="w-2" />
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Increase Size"
+                    onClick={() => resizeActiveItem(cellSize)}
+                    disabled={!activeItem}
+                >
+                    <Plus size={20} />
+                </button>
+                <button
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Decrease Size"
+                    onClick={() => resizeActiveItem(-cellSize)}
+                    disabled={!activeItem}
+                >
+                    <Minus size={20} />
+                </button>
+                <span className="w-2" />
+                
+                <button
+                    className="p-2 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
+                    title="Delete"
+                    onClick={() => activeItem && removeItem(activeItem)}
+                    disabled={!activeItem}
+                >
+                    <Trash2 size={20} />
+                </button>
+                <span className="w-2" />
+                <button
+                    className="p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                    title="Close Toolbar"
+                    onClick={() => setToolbarOpen(false)}
+                >
+                    <span className="text-sm font-bold text-gray-600 dark:text-gray-300">✕</span>
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-wrap justify-between items-center gap-3">
@@ -1143,7 +1233,7 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                     </div>
 
                     {/* Action buttons */}
-                    {activeItem && (
+                    {/* activeItem && (
                         <button
                             onClick={toggleCropMode}
                             className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg"
@@ -1151,7 +1241,7 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                         >
                             <Scissors size={16} />
                         </button>
-                    )}
+                    )*/}
 
                     <button
                         onClick={(e) => {
@@ -1167,7 +1257,7 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                     </button>
                 </div>
             </div>
-
+            {renderDesktopToolbar()}
             {/* Canvas container - square aspect ratio */}
             <div
                 ref={canvasContainerRef}
@@ -1271,96 +1361,58 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                                 )}
                             </div>
                             {activeItem && (
-                                <>
-                                    {/* Floating edit button (desktop only, hidden if toolbar open or on mobile) */}
-                                    {!showToolbar && !isMobile && (
-                                        <button
-                                            className="fixed md:absolute z-50 bottom-4 left-1/2 md:top-4 md:right-4 md:left-auto md:bottom-auto transform -translate-x-1/2 md:translate-x-0 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg"
-                                            style={{ pointerEvents: 'auto' }}
-                                            onClick={() => setShowToolbar(true)}
-                                            title="Edit"
-                                        >
-                                            <Move size={22} />
-                                        </button>
-                                    )}
-
-                                    {/* Floating toolbar */}
-                                    {(showToolbar || isMobile) && (
-                                        <div
-                                            className="fixed md:absolute z-50 flex flex-row md:flex-col gap-1 bottom-4 left-1/2 md:top-4 md:right-4 md:left-auto md:bottom-auto transform -translate-x-1/2 md:translate-x-0 bg-white/90 dark:bg-gray-900/90 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700"
-                                            style={{ pointerEvents: 'auto' }}
-                                        >
-                                            {/* Move */}
-                                            <button
-                                                className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                onClick={() => moveActiveItem(0, -cellSize)}
-                                                title="Move up"
-                                            >
-                                                <ArrowUp size={20} />
-                                            </button>
-                                            <div className="flex">
-                                                <button
-                                                    className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                    onClick={() => moveActiveItem(-cellSize, 0)}
-                                                    title="Move left"
-                                                >
-                                                    <ArrowLeft size={20} />
-                                                </button>
-                                                <button
-                                                    className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                    onClick={() => moveActiveItem(cellSize, 0)}
-                                                    title="Move right"
-                                                >
-                                                    <ArrowRight size={20} />
-                                                </button>
-                                            </div>
-                                            <button
-                                                className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                onClick={() => moveActiveItem(0, cellSize)}
-                                                title="Move down"
-                                            >
-                                                <ArrowDown size={20} />
-                                            </button>
-
-                                            {/* Resize */}
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                    onClick={() => resizeActiveItem(cellSize)}
-                                                    title="Increase size"
-                                                >
-                                                    <Plus size={20} />
-                                                </button>
-                                                <button
-                                                    className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                    onClick={() => resizeActiveItem(-cellSize)}
-                                                    title="Decrease size"
-                                                >
-                                                    <Minus size={20} />
-                                                </button>
-                                            </div>
-
-                                            {/* Delete */}
-                                            <button
-                                                className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
-                                                onClick={() => removeItem(activeItem)}
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={20} />
-                                            </button>
-                                            {/* Collapse/close button (desktop only) */}
-                                            {!isMobile && (
-                                                <button
-                                                    className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                                                    onClick={() => setShowToolbar(false)}
-                                                    title="Close"
-                                                >
-                                                    <Move size={20} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </>
+                                <div className="fixed md:hidden z-50 flex flex-row gap-1 bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 dark:bg-gray-900/90 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                                    <button
+                                        className="p-2"
+                                        title="Move Up"
+                                        onClick={() => moveActiveItem(0, -cellSize)}
+                                    >
+                                        <ArrowUp size={20} />
+                                    </button>
+                                    <button
+                                        className="p-2"
+                                        title="Move Left"
+                                        onClick={() => moveActiveItem(-cellSize, 0)}
+                                    >
+                                        <ArrowLeft size={20} />
+                                    </button>
+                                    <button
+                                        className="p-2"
+                                        title="Move Right"
+                                        onClick={() => moveActiveItem(cellSize, 0)}
+                                    >
+                                        <ArrowRight size={20} />
+                                    </button>
+                                    <button
+                                        className="p-2"
+                                        title="Move Down"
+                                        onClick={() => moveActiveItem(0, cellSize)}
+                                    >
+                                        <ArrowDown size={20} />
+                                    </button>
+                                    <button
+                                        className="p-2"
+                                        title="Increase Size"
+                                        onClick={() => resizeActiveItem(cellSize)}
+                                    >
+                                        <Plus size={20} />
+                                    </button>
+                                    <button
+                                        className="p-2"
+                                        title="Decrease Size"
+                                        onClick={() => resizeActiveItem(-cellSize)}
+                                    >
+                                        <Minus size={20} />
+                                    </button>
+                                    
+                                    <button
+                                        className="p-2 text-red-600 dark:text-red-400"
+                                        title="Delete"
+                                        onClick={() => removeItem(activeItem)}
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     ))}
