@@ -1,4 +1,4 @@
-﻿// components/GridCanvas.tsx
+// components/GridCanvas.tsx
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { NFT } from '../hooks/useWalletCollections';
 import {
@@ -414,6 +414,142 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
         setInitialItemState(null);
     };
 
+
+    // Utility to get relative canvas % coordinates from a touch or mouse event
+    function getRelativePosition(e: TouchEvent | MouseEvent, canvas: HTMLDivElement) {
+        let clientX: number, clientY: number;
+        if ('touches' in e && e.touches.length) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if ('changedTouches' in e && e.changedTouches.length) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            // @ts-ignore
+            clientX = e.clientX;
+            // @ts-ignore
+            clientY = e.clientY;
+        }
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: ((clientX - rect.left) / rect.width) * 100,
+            y: ((clientY - rect.top) / rect.height) * 100,
+        };
+    }
+
+    const handleTouchStart = (e: React.TouchEvent, id: string) => {
+        selectItem(id);
+        setIsDragging(true);
+        setIsResizing(false);
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const { x, y } = getRelativePosition(e.nativeEvent, canvas);
+        setInteractionStart({ x, y });
+
+        const item = items.find(item => item.id === id);
+        if (item) {
+            setInitialItemState({ ...item });
+        }
+    };
+    const handleResizeTouchStart = (e: React.TouchEvent, id: string, direction: ResizeDirection) => {
+        e.stopPropagation();
+        selectItem(id);
+        setIsDragging(false);
+        setIsResizing(true);
+        setResizeDirection(direction);
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const { x, y } = getRelativePosition(e.nativeEvent, canvas);
+        setInteractionStart({ x, y });
+
+        const item = items.find(item => item.id === id);
+        if (item) {
+            setInitialItemState({ ...item });
+        }
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+        if ((!isDragging && !isResizing) || !activeItem || !initialItemState) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const { x: currentX, y: currentY } = getRelativePosition(e, canvas);
+
+        const deltaX = currentX - interactionStart.x;
+        const deltaY = currentY - interactionStart.y;
+
+        if (isDragging) {
+            setItems(prev => {
+                return prev.map(item => {
+                    if (item.id === activeItem) {
+                        let newX = initialItemState.x + deltaX;
+                        let newY = initialItemState.y + deltaY;
+                        if (snapToGrid) {
+                            newX = snapToGridValue(newX);
+                            newY = snapToGridValue(newY);
+                        }
+                        newX = Math.max(0, Math.min(100 - item.size, newX));
+                        newY = Math.max(0, Math.min(100 - item.size, newY));
+                        return { ...item, x: newX, y: newY };
+                    }
+                    return item;
+                });
+            });
+        } else if (isResizing && resizeDirection) {
+            setItems(prev => {
+                return prev.map(item => {
+                    if (item.id === activeItem) {
+                        let newX = initialItemState.x;
+                        let newY = initialItemState.y;
+                        let newSize = initialItemState.size;
+                        let effectiveDelta = 0;
+                        if (resizeDirection === 'e') effectiveDelta = deltaX;
+                        else if (resizeDirection === 'w') effectiveDelta = -deltaX;
+                        else if (resizeDirection === 's') effectiveDelta = deltaY;
+                        else if (resizeDirection === 'n') effectiveDelta = -deltaY;
+                        else if (resizeDirection === 'ne') effectiveDelta = Math.max(deltaX, -deltaY);
+                        else if (resizeDirection === 'nw') effectiveDelta = Math.max(-deltaX, -deltaY);
+                        else if (resizeDirection === 'se') effectiveDelta = Math.max(deltaX, deltaY);
+                        else if (resizeDirection === 'sw') effectiveDelta = Math.max(-deltaX, deltaY);
+
+                        if (resizeDirection.includes('e')) newSize = initialItemState.size + effectiveDelta;
+                        else if (resizeDirection.includes('w')) {
+                            newSize = initialItemState.size + effectiveDelta;
+                            newX = initialItemState.x + initialItemState.size - newSize;
+                        }
+                        else if (resizeDirection.includes('s')) newSize = initialItemState.size + effectiveDelta;
+                        else if (resizeDirection.includes('n')) {
+                            newSize = initialItemState.size + effectiveDelta;
+                            newY = initialItemState.y + initialItemState.size - newSize;
+                        }
+                        newSize = Math.max(cellSize, newSize);
+                        if (snapToGrid) {
+                            newX = snapToGridValue(newX);
+                            newY = snapToGridValue(newY);
+                            newSize = snapToGridValue(newSize);
+                        }
+                        newX = Math.max(0, newX);
+                        newY = Math.max(0, newY);
+                        newSize = Math.min(100 - newX, 100 - newY, newSize);
+                        return { ...item, x: newX, y: newY, size: newSize };
+                    }
+                    return item;
+                });
+            });
+        }
+    };
+    const handleTouchEnd = () => {
+        if (isDragging || isResizing) {
+            saveToHistory([...items]);
+        }
+        setIsDragging(false);
+        setIsResizing(false);
+        setResizeDirection(null);
+        setInitialItemState(null);
+    };
     // Toggle crop mode for the active item
     const toggleCropMode = () => {
         setCropMode(!cropMode);
@@ -919,13 +1055,12 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
     // Add event listeners for mouse move and up
     useEffect(() => {
         if (isDragging || isResizing) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchmove', handleTouchMove, { passive: false });
+            window.addEventListener('touchend', handleTouchEnd);
         }
-
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
         };
     }, [isDragging, isResizing, activeItem, resizeDirection, interactionStart, initialItemState]);
 
@@ -1175,6 +1310,7 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                                 zIndex: item.zIndex
                             }}
                             onMouseDown={(e) => handleMouseDown(e, item.id)}
+                            onTouchStart={(e) => handleTouchStart(e, item.id)}
                         >
                             <div className="relative w-full h-full">
                                 {/* NFT image with crop */}
@@ -1201,21 +1337,21 @@ const GridCanvas = forwardRef<{ addMultipleNFTs: (nfts: NFT[]) => void }, GridCa
                                 {activeItem === item.id && (
                                     <>
                                         <div className="absolute -top-1 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nw-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'nw')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'nw')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'nw')} />
                                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-n-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'n')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'n')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'n')} />
                                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ne-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'ne')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'ne')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'ne')} />
                                         <div className="absolute top-1/2 -translate-y-1/2 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-w-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'w')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'w')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'w')} />
                                         <div className="absolute top-1/2 -translate-y-1/2 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-e-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'e')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'e')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'e')} />
                                         <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-sw-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'sw')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'sw')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'sw')} />
                                         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-s-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 's')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 's')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 's')} />
                                         <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-se-resize"
-                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'se')} />
+                                            onMouseDown={(e) => handleResizeStart(e, item.id, 'se')} onTouchStart={(e) => handleResizeTouchStart(e, item.id, 'se')} />
 
                                         {/* Control buttons */}
                                         <div className="absolute -top-8 right-0 flex gap-1">
